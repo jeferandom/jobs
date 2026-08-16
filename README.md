@@ -1,6 +1,28 @@
 # Jobs Scraper
 
 Proyecto de scraping de páginas web de empleos.
+## Uso
+
+### CLI
+
+```bash
+# Interactivo (pide keyword por teclado)
+python3 src/main.py
+
+# Con argumentos
+python3 src/main.py --keyword desarrollador --source computrabajo --output jobs.csv
+
+# Listar fuentes disponibles
+python3 src/main.py --list-sources
+```
+
+### UI Web
+
+```bash
+python3 src/main.py --web
+```
+
+Abre el navegador en `http://localhost:8000` con un formulario para seleccionar fuente e ingresar palabra clave.
 
 ## Diagrama de la Aplicación
 
@@ -99,28 +121,6 @@ jobs/
 pip install -r requirements.txt
 ```
 
-## Uso
-
-### CLI
-
-```bash
-# Interactivo (pide keyword por teclado)
-python3 src/main.py
-
-# Con argumentos
-python3 src/main.py --keyword desarrollador --source computrabajo --output jobs.csv
-
-# Listar fuentes disponibles
-python3 src/main.py --list-sources
-```
-
-### UI Web
-
-```bash
-python3 src/main.py --web
-```
-
-Abre el navegador en `http://localhost:8000` con un formulario para seleccionar fuente e ingresar palabra clave.
 
 ## Arquitectura
 
