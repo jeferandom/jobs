@@ -1,65 +1,56 @@
-import requests
-from bs4 import BeautifulSoup
-import pandas as pd
-from datetime import datetime
+"""Entry point del sistema de scraping de empleos."""
+
+import csv
+import logging
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src.scrapers.computrabajo import ComputrabajoScraper
+from src.scrapers.base import JobSource
+from src.models.job import Job
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 
-def scrape_jobs(url):
-    """
-    Función base para scraping de empleos.
-    """
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    }
-    
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.text
-    except requests.RequestException as e:
-        print(f"Error al obtener la página: {e}")
-        return None
+def save_to_csv(jobs: list[Job], filename: str = "jobs.csv") -> None:
+    """Guarda una lista de Job en un archivo CSV."""
+    if not jobs:
+        logger.warning("No hay ofertas para guardar")
+        return
+
+    fieldnames = list(jobs[0].__dataclass_fields__.keys())
+    with open(f"data/{filename}", "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for job in jobs:
+            writer.writerow(job.__dict__)
+
+    logger.info(f"Guardadas {len(jobs)} ofertas en data/{filename}")
 
 
-def parse_job_listing(html):
-    """
-    Parser básico para listados de empleos.
-    """
-    soup = BeautifulSoup(html, 'lxml')
-    jobs = []
-    
-    # Ejemplo básico - personalizar según la estructura del sitio
-    job_elements = soup.find_all('div', class_='job-listing')
-    
-    for job in job_elements:
-        title = job.find('h2')
-        company = job.find('span', class_='company')
-        location = job.find('span', class_='location')
-        
-        jobs.append({
-            'title': title.text.strip() if title else 'N/A',
-            'company': company.text.strip() if company else 'N/A',
-            'location': location.text.strip() if location else 'N/A',
-            'scraped_at': datetime.now().isoformat()
-        })
-    
-    return jobs
+def get_scrapers() -> list[JobSource]:
+    """Retorna la lista de adaptadores disponibles."""
+    return [
+        ComputrabajoScraper(),
+    ]
 
 
-def save_to_csv(jobs, filename='jobs.csv'):
-    """
-    Guarda los empleos en un archivo CSV.
-    """
-    df = pd.DataFrame(jobs)
-    df.to_csv(f'data/{filename}', index=False, encoding='utf-8')
-    print(f"Guardados {len(jobs)} empleos en data/{filename}")
+if __name__ == "__main__":
+    keyword = input("Palabra clave de búsqueda: ").strip()
+    if not keyword:
+        keyword = "desarrollador"
 
+    all_jobs: list[Job] = []
 
-if __name__ == '__main__':
-    # Ejemplo de uso
-    url = "https://example.com/jobs"
-    html = scrape_jobs(url)
-    
-    if html:
-        jobs = parse_job_listing(html)
-        save_to_csv(jobs)
+    for scraper in get_scrapers():
+        logger.info(f"Scrapeando {scraper.name}...")
+        jobs = scraper.search(keyword)
+        all_jobs.extend(jobs)
+
+    save_to_csv(all_jobs, f"jobs_{keyword.replace(' ', '_')}.csv")
