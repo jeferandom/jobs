@@ -16,5 +16,6 @@ class Job:
     salary: str | None = None
     job_type: str | None = None  # presencial, remoto, hibrido
     url: str | None = None
+    description: str | None = None
     is_urgent: bool = False
     is_featured: bool = False
