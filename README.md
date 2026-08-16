@@ -7,10 +7,19 @@ Proyecto de scraping de páginas web de empleos.
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                          main.py                                │
-│              keyword ─► get_scrapers() ─► save_to_csv           │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
+│          ┌─────────────┐          ┌──────────────┐              │
+│          │   CLI       │          │   Web UI     │              │
+│          │  argparse   │          │ http.server  │              │
+│          └──────┬──────┘          └──────┬───────┘              │
+│                 └────────────┬───────────┘                      │
+│                              ▼                                  │
+│                       run_scraper()                             │
+│                              │                                  │
+│                              ▼                                  │
+│                       save_to_csv()                             │
+└─────────────────────────────┬───────────────────────────────────┘
+                              │
+                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    src/scrapers/base.py                          │
 │                   class JobSource(ABC)                           │
@@ -18,16 +27,16 @@ Proyecto de scraping de páginas web de empleos.
 │           │  name: str                      │                   │
 │           │  search(keyword) -> list[Job]   │                   │
 │           └─────────────────────────────────┘                   │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ implementa
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-       ┌──────────┐   ┌──────────┐   ┌──────────┐
-       │Computra- │   │ Infojobs │   │ LinkedIn │
-       │ .jobo    │   │ (futuro) │   │ (futuro) │
-       └────┬─────┘   └──────────┘   └──────────┘
-            │
-            ▼
+└─────────────────────────────┬───────────────────────────────────┘
+                              │ implementa
+               ┌──────────────┼──────────────┐
+               ▼              ▼              ▼
+        ┌──────────┐   ┌──────────┐   ┌──────────┐
+        │Computra- │   │ Infojobs │   │ LinkedIn │
+        │ .jobo    │   │ (futuro) │   │ (futuro) │
+        └────┬─────┘   └──────────┘   └──────────┘
+             │
+             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                src/scrapers/computrabajo.py                      │
 │                                                                 │
@@ -35,27 +44,27 @@ Proyecto de scraping de páginas web de empleos.
 │       │                    │                                    │
 │       ▼                    ▼                                    │
 │  requests + headers    BeautifulSoup + lxml                    │
-└────────────────────────────┬────────────────────────────────────┘
+└─────────────────────────────┬───────────────────────────────────┘
+                              │
+                              ▼
+                    ┌──────────────────┐
+                    │   co.computra-   │
+                    │    jobajo.com    │
+                    │  (paginas 1-N)  │
+                    └────────┬─────────┘
                              │
                              ▼
-                   ┌──────────────────┐
-                   │   co.computra-   │
-                   │    jobajo.com    │
-                   │  (paginas 1-N)  │
-                   └────────┬─────────┘
-                            │
-                            ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                     src/models/job.py                            │
 │                   @dataclass Job                                 │
 │  title | company | location | source | salary | url | ...       │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │     data/       │
-                    │  .csv / .json   │
-                    └─────────────────┘
+└─────────────────────────────┬───────────────────────────────────┘
+                              │
+                              ▼
+                     ┌─────────────────┐
+                     │     data/       │
+                     │  .csv / .json   │
+                     └─────────────────┘
 ```
 
 ## Estructura
@@ -92,9 +101,26 @@ pip install -r requirements.txt
 
 ## Uso
 
+### CLI
+
 ```bash
-python src/main.py
+# Interactivo (pide keyword por teclado)
+python3 src/main.py
+
+# Con argumentos
+python3 src/main.py --keyword desarrollador --source computrabajo --output jobs.csv
+
+# Listar fuentes disponibles
+python3 src/main.py --list-sources
 ```
+
+### UI Web
+
+```bash
+python3 src/main.py --web
+```
+
+Abre el navegador en `http://localhost:8000` con un formulario para seleccionar fuente e ingresar palabra clave.
 
 ## Arquitectura
 

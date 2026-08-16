@@ -32,7 +32,7 @@ class ComputrabajoScraper(JobSource):
     def name(self) -> str:
         return "computrabajo"
 
-    def search(self, keyword: str) -> list[Job]:
+    def search(self, keyword: str, limit: int = 100) -> list[Job]:
         """Busca ofertas en Computrabajo por palabra clave."""
         keyword = keyword.strip().lower().replace(" ", "-")
         search_path = f"/trabajo-de-{keyword}"
@@ -40,7 +40,7 @@ class ComputrabajoScraper(JobSource):
         jobs: list[Job] = []
         page = 1
 
-        while True:
+        while len(jobs) < limit:
             logger.info(f"Página {page} - {BASE_URL}{search_path}?p={page}")
             html = self._fetch_page(f"{BASE_URL}{search_path}?p={page}")
 
@@ -62,6 +62,7 @@ class ComputrabajoScraper(JobSource):
             page += 1
             time.sleep(random.uniform(*REQUEST_DELAY))
 
+        jobs = jobs[:limit]
         logger.info(f"Total scrapeado: {len(jobs)} ofertas")
         return jobs
 

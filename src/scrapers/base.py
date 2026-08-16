@@ -15,6 +15,6 @@ class JobSource(ABC):
         ...
 
     @abstractmethod
-    def search(self, keyword: str) -> list[Job]:
+    def search(self, keyword: str, limit: int = 100) -> list[Job]:
         """Busca ofertas por palabra clave y retorna lista de Job."""
         ...
