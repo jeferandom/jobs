@@ -155,16 +155,19 @@ HTML_PAGE = """<!DOCTYPE html>
         #result.error { background: #f8d7da; color: #721c24; }
         .spinner { display: none; text-align: center; margin-top: 1rem; }
         .spinner.active { display: block; }
-        .file-list { list-style: none; }
-        .file-item { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem; border: 1px solid #eee; border-radius: 8px; margin-bottom: 0.5rem; transition: background 0.15s; }
-        .file-item:hover { background: #f8f9fa; }
+        .file-list { list-style: none; display: flex; flex-direction: column; gap: 0.75rem; }
+        .file-item { background: #fafafa; border: 1px solid #e3e3e3; border-radius: 10px; padding: 1rem 1.25rem; transition: all 0.15s; cursor: pointer; }
+        .file-item:hover { background: #f0f0f0; border-color: #ccc; transform: translateY(-1px); }
+        .file-header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
         .file-info { flex: 1; min-width: 0; }
-        .file-name { font-weight: 600; color: #1a1a2e; font-size: 0.9rem; word-break: break-all; }
-        .file-meta { color: #888; font-size: 0.8rem; margin-top: 0.2rem; }
-        .file-item .view-btn { flex-shrink: 0; margin-left: 0.75rem; padding: 0.4rem 1rem; background: #4361ee; color: white; border: none; border-radius: 6px; font-size: 0.85rem; cursor: pointer; }
+        .file-name { font-weight: 700; color: #1a1a2e; font-size: 1rem; word-break: break-all; }
+        .file-keyword { font-weight: 700; color: #1a1a2e; font-size: 1rem; }
+        .file-count { display: inline-block; background: #4361ee; color: white; border-radius: 10px; padding: 0.1rem 0.5rem; font-size: 0.7rem; font-weight: 600; margin-left: 0.5rem; }
+        .file-meta { display: flex; gap: 1rem; color: #888; font-size: 0.8rem; margin-top: 0.4rem; }
+        .file-meta span { display: inline-flex; align-items: center; gap: 0.2rem; }
+        .file-item .view-btn { flex-shrink: 0; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; padding: 0; background: #4361ee; color: white; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; }
         .file-item .view-btn:hover { background: #3a56d4; }
         .empty-msg { text-align: center; color: #888; padding: 2rem 0; font-size: 0.9rem; }
-        .badge { display: inline-block; background: #4361ee; color: white; border-radius: 10px; padding: 0.15rem 0.5rem; font-size: 0.75rem; margin-left: 0.5rem; }
         @media (max-width: 800px) {
             .layout { flex-direction: column; }
             .card { flex: none; width: 100%; }
@@ -222,15 +225,22 @@ HTML_PAGE = """<!DOCTYPE html>
                     const li = document.createElement('li');
                     li.className = 'file-item';
                     const date = new Date(f.modified * 1000);
-                    const dateStr = date.toLocaleDateString('es-CO') + ' ' + date.toLocaleTimeString('es-CO', {hour:'2-digit', minute:'2-digit'});
+                    const dateStr = date.toLocaleDateString('es-CO');
+                    const timeStr = date.toLocaleTimeString('es-CO', {hour:'2-digit', minute:'2-digit'});
                     const sizeKB = (f.size / 1024).toFixed(1);
                     const keyword = f.name.replace(/^jobs_/, '').replace(/\\.json$/, '').replace(/_/g, ' ');
                     li.innerHTML = `
-                        <div class="file-info">
-                            <div class="file-name">${keyword}<span class="badge">${f.count} empleos</span></div>
-                            <div class="file-meta">${dateStr} &middot; ${sizeKB} KB</div>
-                        </div>
-                        <button class="view-btn" onclick="window.location.href='/results?file=${encodeURIComponent(f.name)}'">Ver</button>
+                         <div class="file-header">
+                             <div class="file-info">
+                                 <div class="file-keyword">${keyword}<span class="file-count">${f.count} empleos</span></div>
+                                 <div class="file-meta">
+                                     <span>&#128337; ${dateStr} ${timeStr}</span>
+                                     <span>&#128190; ${sizeKB} KB</span>
+                                     <span>&#128194; ${f.name}</span>
+                                 </div>
+                             </div>
+                             <button class="view-btn" onclick="window.location.href='/results?file=${encodeURIComponent(f.name)}'">&#128269;</button>
+                         </div>
                     `;
                     list.appendChild(li);
                 });
