@@ -8,6 +8,7 @@ Modos de uso:
 
 import argparse
 import csv
+import json
 import logging
 import sys
 import webbrowser
@@ -74,6 +75,23 @@ def save_to_csv(jobs: list[Job], filename: str = "jobs.csv") -> str:
     return str(filepath)
 
 
+def save_to_json(jobs: list[Job], filename: str = "jobs.json") -> str:
+    """Guarda una lista de Job en un archivo JSON. Retorna la ruta del archivo."""
+    if not jobs:
+        logger.warning("No hay ofertas para guardar en JSON")
+        return ""
+
+    Path("data").mkdir(exist_ok=True)
+    filepath = Path("data") / filename
+
+    data = [job.__dict__ for job in jobs]
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    logger.info(f"Guardadas {len(jobs)} ofertas en JSON: {filepath}")
+    return str(filepath)
+
+
 # =====================
 # CLI
 # =====================
@@ -100,6 +118,7 @@ def run_cli() -> None:
     filename = args.output or f"jobs_{keyword.replace(' ', '_')}.csv"
 
     jobs = run_scraper(keyword, args.source, limit=args.limit)
+    save_to_json(jobs, f"jobs_{keyword.replace(' ', '_')}.json")
     save_to_csv(jobs, filename)
 
 
@@ -120,9 +139,14 @@ HTML_PAGE = """<!DOCTYPE html>
         h1 { font-size: 1.5rem; margin-bottom: 1.5rem; color: #1a1a2e; }
         label { display: block; margin-bottom: 0.25rem; font-weight: 600; color: #333; font-size: 0.9rem; }
         input, select { width: 100%; padding: 0.6rem; margin-bottom: 1rem; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; }
+        .checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; }
+        .checkbox-row input[type="checkbox"] { width: auto; margin-bottom: 0; }
+        .checkbox-row label { margin-bottom: 0; font-weight: 400; }
         button { width: 100%; padding: 0.75rem; background: #4361ee; color: white; border: none; border-radius: 6px; font-size: 1rem; cursor: pointer; }
         button:hover { background: #3a56d4; }
         button:disabled { background: #aaa; cursor: not-allowed; }
+        button.secondary { background: #2ecc71; margin-top: 0.75rem; }
+        button.secondary:hover { background: #27ae60; }
         #result { margin-top: 1.5rem; padding: 1rem; border-radius: 6px; display: none; }
         #result.success { background: #d4edda; color: #155724; }
         #result.error { background: #f8d7da; color: #721c24; }
@@ -146,10 +170,16 @@ HTML_PAGE = """<!DOCTYPE html>
                 __SOURCES__
             </select>
 
+            <div class="checkbox-row">
+                <input type="checkbox" id="save_csv">
+                <label for="save_csv">Guardar también en CSV</label>
+            </div>
+
             <button type="submit" id="btn">Buscar empleos</button>
         </form>
         <div class="spinner" id="spinner">Buscando... esto puede tardar unos minutos</div>
         <div id="result"></div>
+        <button class="secondary" id="btnResults" style="display:none" onclick="window.location.href='/results'">Ver resultados</button>
     </div>
 
     <script>
@@ -158,20 +188,24 @@ HTML_PAGE = """<!DOCTYPE html>
             const btn = document.getElementById('btn');
             const spinner = document.getElementById('spinner');
             const result = document.getElementById('result');
+            const btnResults = document.getElementById('btnResults');
 
             btn.disabled = true;
             spinner.classList.add('active');
             result.style.display = 'none';
+            btnResults.style.display = 'none';
 
             const keyword = document.getElementById('keyword').value;
             const source = document.getElementById('source').value;
             const limit = document.getElementById('limit').value;
+            const saveCsv = document.getElementById('save_csv').checked;
 
             try {
-                const resp = await fetch(`/search?keyword=${encodeURIComponent(keyword)}&source=${encodeURIComponent(source)}&limit=${limit}`);
+                const resp = await fetch(`/search?keyword=${encodeURIComponent(keyword)}&source=${encodeURIComponent(source)}&limit=${limit}&save_csv=${saveCsv}`);
                 const data = await resp.json();
                 result.className = 'success';
                 result.textContent = `${data.count} ofertas guardadas en ${data.file}`;
+                btnResults.style.display = 'block';
             } catch (err) {
                 result.className = 'error';
                 result.textContent = 'Error: ' + err.message;
@@ -181,6 +215,91 @@ HTML_PAGE = """<!DOCTYPE html>
             spinner.classList.remove('active');
             btn.disabled = false;
         });
+    </script>
+</body>
+</html>
+"""
+
+
+RESULTS_HTML = """<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resultados - Jobs Scraper</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: #f0f2f5; padding: 2rem; }
+        .header { max-width: 1200px; margin: 0 auto 1.5rem; display: flex; justify-content: space-between; align-items: center; }
+        h1 { font-size: 1.5rem; color: #1a1a2e; }
+        .back-btn { padding: 0.5rem 1rem; background: #4361ee; color: white; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; font-size: 0.9rem; }
+        .back-btn:hover { background: #3a56d4; }
+        .table-wrap { max-width: 1200px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th { background: #4361ee; color: white; padding: 0.75rem 0.5rem; text-align: left; white-space: nowrap; position: sticky; top: 0; }
+        td { padding: 0.6rem 0.5rem; border-bottom: 1px solid #eee; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        tr:hover td { background: #f8f9fa; }
+        .empty { text-align: center; padding: 3rem; color: #888; }
+        .count { color: #666; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <a href="/" class="back-btn">Volver</a>
+            <h1 style="display:inline; margin-left:1rem;">Resultados <span class="count" id="count"></span></h1>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table id="table">
+            <thead>
+                <tr>
+                    <th>Título</th>
+                    <th>Empresa</th>
+                    <th>Ubicación</th>
+                    <th>Fuente</th>
+                    <th>Salario</th>
+                    <th>Tipo</th>
+                    <th>Urgente</th>
+                    <th>Destacado</th>
+                    <th>Fecha</th>
+                </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+        </table>
+        <div class="empty" id="empty" style="display:none">No hay resultados para mostrar.</div>
+    </div>
+
+    <script>
+        (async () => {
+            const tbody = document.getElementById('tbody');
+            const empty = document.getElementById('empty');
+            const countEl = document.getElementById('count');
+            try {
+                const resp = await fetch('/api/results');
+                const jobs = await resp.json();
+                if (!jobs.length) { empty.style.display = 'block'; return; }
+                countEl.textContent = `(${jobs.length} ofertas)`;
+                jobs.forEach(j => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td title="${(j.title||'').replace(/"/g,'&quot;')}">${j.title||'-'}</td>
+                        <td>${j.company||'-'}</td>
+                        <td>${j.location||'-'}</td>
+                        <td>${j.source||'-'}</td>
+                        <td>${j.salary||'-'}</td>
+                        <td>${j.job_type||'-'}</td>
+                        <td>${j.is_urgent ? 'Si' : 'No'}</td>
+                        <td>${j.is_featured ? 'Si' : 'No'}</td>
+                        <td>${j.scraped_at||'-'}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {
+                empty.textContent = 'Error al cargar resultados.';
+                empty.style.display = 'block';
+            }
+        })();
     </script>
 </body>
 </html>
@@ -206,15 +325,37 @@ class WebHandler(BaseHTTPRequestHandler):
             keyword = params.get("keyword", ["desarrollador"])[0]
             source = params.get("source", [""])[0] or None
             limit = int(params.get("limit", ["100"])[0])
+            save_csv = params.get("save_csv", ["false"])[0].lower() == "true"
 
             jobs = run_scraper(keyword, source, limit=limit)
-            filename = f"jobs_{keyword.replace(' ', '_')}.csv"
-            filepath = save_to_csv(jobs, filename)
 
-            import json
+            json_filename = f"jobs_{keyword.replace(' ', '_')}.json"
+            json_filepath = save_to_json(jobs, json_filename)
 
-            response = json.dumps({"count": len(jobs), "file": filepath})
+            csv_filepath = ""
+            if save_csv:
+                csv_filename = f"jobs_{keyword.replace(' ', '_')}.csv"
+                csv_filepath = save_to_csv(jobs, csv_filename)
+
+            response = json.dumps({
+                "count": len(jobs),
+                "file": json_filepath,
+                "csv_file": csv_filepath,
+            })
             self._respond(200, response, "application/json")
+
+        elif parsed.path == "/results":
+            self._respond(200, RESULTS_HTML, "text/html; charset=utf-8")
+
+        elif parsed.path == "/api/results":
+            data_dir = Path("data")
+            json_files = sorted(data_dir.glob("jobs_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if json_files:
+                with open(json_files[0], "r", encoding="utf-8") as f:
+                    jobs = json.load(f)
+            else:
+                jobs = []
+            self._respond(200, json.dumps(jobs, ensure_ascii=False), "application/json")
 
         else:
             self._respond(404, "Not found", "text/plain")
