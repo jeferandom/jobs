@@ -134,9 +134,12 @@ HTML_PAGE = """<!DOCTYPE html>
     <title>Jobs Scraper</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: system-ui, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); width: 100%; max-width: 480px; }
+        body { font-family: system-ui, sans-serif; background: #f0f2f5; min-height: 100vh; padding: 2rem; }
+        .layout { max-width: 1100px; margin: 0 auto; display: flex; gap: 1.5rem; align-items: flex-start; }
+        .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); flex: 0 0 420px; }
+        .panel { background: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); flex: 1; min-width: 0; }
         h1 { font-size: 1.5rem; margin-bottom: 1.5rem; color: #1a1a2e; }
+        .panel h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #1a1a2e; }
         label { display: block; margin-bottom: 0.25rem; font-weight: 600; color: #333; font-size: 0.9rem; }
         input, select { width: 100%; padding: 0.6rem; margin-bottom: 1rem; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; }
         .checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; }
@@ -152,37 +155,93 @@ HTML_PAGE = """<!DOCTYPE html>
         #result.error { background: #f8d7da; color: #721c24; }
         .spinner { display: none; text-align: center; margin-top: 1rem; }
         .spinner.active { display: block; }
+        .file-list { list-style: none; }
+        .file-item { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem; border: 1px solid #eee; border-radius: 8px; margin-bottom: 0.5rem; transition: background 0.15s; }
+        .file-item:hover { background: #f8f9fa; }
+        .file-info { flex: 1; min-width: 0; }
+        .file-name { font-weight: 600; color: #1a1a2e; font-size: 0.9rem; word-break: break-all; }
+        .file-meta { color: #888; font-size: 0.8rem; margin-top: 0.2rem; }
+        .file-item .view-btn { flex-shrink: 0; margin-left: 0.75rem; padding: 0.4rem 1rem; background: #4361ee; color: white; border: none; border-radius: 6px; font-size: 0.85rem; cursor: pointer; }
+        .file-item .view-btn:hover { background: #3a56d4; }
+        .empty-msg { text-align: center; color: #888; padding: 2rem 0; font-size: 0.9rem; }
+        .badge { display: inline-block; background: #4361ee; color: white; border-radius: 10px; padding: 0.15rem 0.5rem; font-size: 0.75rem; margin-left: 0.5rem; }
+        @media (max-width: 800px) {
+            .layout { flex-direction: column; }
+            .card { flex: none; width: 100%; }
+            .panel { flex: none; width: 100%; }
+        }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h1>Jobs Scraper</h1>
-        <form id="form">
-            <label for="keyword">Palabra clave</label>
-            <input type="text" id="keyword" placeholder="desarrollador" value="desarrollador" required>
+    <div class="layout">
+        <div class="card">
+            <h1>Jobs Scraper</h1>
+            <form id="form">
+                <label for="keyword">Palabra clave</label>
+                <input type="text" id="keyword" placeholder="desarrollador" value="desarrollador" required>
 
-            <label for="limit">Número de resultados</label>
-            <input type="number" id="limit" min="1" max="5000" value="100" placeholder="100">
+                <label for="limit">Número de resultados</label>
+                <input type="number" id="limit" min="1" max="5000" value="100" placeholder="100">
 
-            <label for="source">Fuente de empleo</label>
-            <select id="source">
-                <option value="">Todas las fuentes</option>
-                __SOURCES__
-            </select>
+                <label for="source">Fuente de empleo</label>
+                <select id="source">
+                    <option value="">Todas las fuentes</option>
+                    __SOURCES__
+                </select>
 
-            <div class="checkbox-row">
-                <input type="checkbox" id="save_csv">
-                <label for="save_csv">Guardar también en CSV</label>
-            </div>
+                <div class="checkbox-row">
+                    <input type="checkbox" id="save_csv">
+                    <label for="save_csv">Guardar también en CSV</label>
+                </div>
 
-            <button type="submit" id="btn">Buscar empleos</button>
-        </form>
-        <div class="spinner" id="spinner">Buscando... esto puede tardar unos minutos</div>
-        <div id="result"></div>
-        <button class="secondary" id="btnResults" style="display:none" onclick="window.location.href='/results'">Ver resultados</button>
+                <button type="submit" id="btn">Buscar empleos</button>
+            </form>
+            <div class="spinner" id="spinner">Buscando... esto puede tardar unos minutos</div>
+            <div id="result"></div>
+            <button class="secondary" id="btnResults" style="display:none" onclick="window.location.href='/results'">Ver resultados</button>
+        </div>
+
+        <div class="panel">
+            <h2>Archivos generados</h2>
+            <ul class="file-list" id="fileList"></ul>
+            <div class="empty-msg" id="emptyMsg">No hay archivos generados aun.</div>
+        </div>
     </div>
 
     <script>
+        async function loadFiles() {
+            const list = document.getElementById('fileList');
+            const emptyMsg = document.getElementById('emptyMsg');
+            try {
+                const resp = await fetch('/api/files');
+                const files = await resp.json();
+                if (!files.length) { emptyMsg.style.display = 'block'; return; }
+                emptyMsg.style.display = 'none';
+                list.innerHTML = '';
+                files.forEach(f => {
+                    const li = document.createElement('li');
+                    li.className = 'file-item';
+                    const date = new Date(f.modified * 1000);
+                    const dateStr = date.toLocaleDateString('es-CO') + ' ' + date.toLocaleTimeString('es-CO', {hour:'2-digit', minute:'2-digit'});
+                    const sizeKB = (f.size / 1024).toFixed(1);
+                    const keyword = f.name.replace(/^jobs_/, '').replace(/\\.json$/, '').replace(/_/g, ' ');
+                    li.innerHTML = `
+                        <div class="file-info">
+                            <div class="file-name">${keyword}<span class="badge">${f.count} empleos</span></div>
+                            <div class="file-meta">${dateStr} &middot; ${sizeKB} KB</div>
+                        </div>
+                        <button class="view-btn" onclick="window.location.href='/results?file=${encodeURIComponent(f.name)}'">Ver</button>
+                    `;
+                    list.appendChild(li);
+                });
+            } catch (e) {
+                emptyMsg.textContent = 'Error al cargar archivos.';
+                emptyMsg.style.display = 'block';
+            }
+        }
+
+        loadFiles();
+
         document.getElementById('form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = document.getElementById('btn');
@@ -206,6 +265,7 @@ HTML_PAGE = """<!DOCTYPE html>
                 result.className = 'success';
                 result.textContent = `${data.count} ofertas guardadas en ${data.file}`;
                 btnResults.style.display = 'block';
+                loadFiles();
             } catch (err) {
                 result.className = 'error';
                 result.textContent = 'Error: ' + err.message;
@@ -230,70 +290,111 @@ RESULTS_HTML = """<!DOCTYPE html>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: system-ui, sans-serif; background: #f0f2f5; padding: 2rem; }
-        .header { max-width: 1200px; margin: 0 auto 1.5rem; display: flex; justify-content: space-between; align-items: center; }
+        .header { max-width: 1000px; margin: 0 auto 1.5rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
         h1 { font-size: 1.5rem; color: #1a1a2e; }
         .back-btn { padding: 0.5rem 1rem; background: #4361ee; color: white; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; font-size: 0.9rem; }
         .back-btn:hover { background: #3a56d4; }
-        .table-wrap { max-width: 1200px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-        th { background: #4361ee; color: white; padding: 0.75rem 0.5rem; text-align: left; white-space: nowrap; position: sticky; top: 0; }
-        td { padding: 0.6rem 0.5rem; border-bottom: 1px solid #eee; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        tr:hover td { background: #f8f9fa; }
-        .empty { text-align: center; padding: 3rem; color: #888; }
         .count { color: #666; font-size: 0.9rem; }
+        .file-label { color: #888; font-size: 0.85rem; font-weight: 400; }
+        .jobs-container { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+        .job-card { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); padding: 1.25rem 1.5rem; transition: box-shadow 0.15s, transform 0.15s; }
+        .job-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); transform: translateY(-1px); }
+        .job-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+        .job-title { font-size: 1.1rem; font-weight: 700; color: #1a1a2e; margin-bottom: 0.25rem; }
+        .job-company { font-size: 0.95rem; color: #4361ee; font-weight: 600; }
+        .job-badges { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.5rem; }
+        .badge { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.2rem 0.55rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+        .badge.urgent { background: #fff3cd; color: #856404; }
+        .badge.featured { background: #d1ecf1; color: #0c5460; }
+        .badge.type { background: #e9ecef; color: #495057; }
+        .badge.salary { background: #d4edda; color: #155724; }
+        .job-details { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1.5rem; margin-top: 1rem; font-size: 0.85rem; }
+        .detail-item { display: flex; flex-direction: column; gap: 0.15rem; }
+        .detail-label { color: #888; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.3px; }
+        .detail-value { color: #333; font-weight: 500; }
+        .job-location { display: flex; align-items: center; gap: 0.4rem; color: #555; margin-top: 0.25rem; font-size: 0.85rem; }
+        .job-url a { color: #4361ee; text-decoration: none; font-size: 0.85rem; }
+        .job-url a:hover { text-decoration: underline; }
+        .empty { text-align: center; padding: 3rem; color: #888; font-size: 1rem; }
+        @media (max-width: 600px) {
+            .job-details { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
     <div class="header">
-        <div>
-            <a href="/" class="back-btn">Volver</a>
-            <h1 style="display:inline; margin-left:1rem;">Resultados <span class="count" id="count"></span></h1>
-        </div>
+        <a href="/" class="back-btn">Volver</a>
+        <h1>Resultados</h1>
+        <span class="count" id="count"></span>
+        <span class="file-label" id="fileLabel"></span>
     </div>
-    <div class="table-wrap">
-        <table id="table">
-            <thead>
-                <tr>
-                    <th>Título</th>
-                    <th>Empresa</th>
-                    <th>Ubicación</th>
-                    <th>Fuente</th>
-                    <th>Salario</th>
-                    <th>Tipo</th>
-                    <th>Urgente</th>
-                    <th>Destacado</th>
-                    <th>Fecha</th>
-                </tr>
-            </thead>
-            <tbody id="tbody"></tbody>
-        </table>
-        <div class="empty" id="empty" style="display:none">No hay resultados para mostrar.</div>
+    <div class="jobs-container" id="jobsContainer">
+        <div class="empty" id="empty">No hay resultados para mostrar.</div>
     </div>
 
     <script>
         (async () => {
-            const tbody = document.getElementById('tbody');
+            const container = document.getElementById('jobsContainer');
             const empty = document.getElementById('empty');
             const countEl = document.getElementById('count');
+            const fileLabel = document.getElementById('fileLabel');
+            const params = new URLSearchParams(window.location.search);
+            const file = params.get('file');
+            const apiUrl = file ? `/api/results?file=${encodeURIComponent(file)}` : '/api/results';
+            if (file) {
+                const keyword = file.replace(/^jobs_/, '').replace(/\\.json$/, '').replace(/_/g, ' ');
+                fileLabel.textContent = `Archivo: ${keyword}`;
+            }
             try {
-                const resp = await fetch('/api/results');
+                const resp = await fetch(apiUrl);
                 const jobs = await resp.json();
                 if (!jobs.length) { empty.style.display = 'block'; return; }
-                countEl.textContent = `(${jobs.length} ofertas)`;
+                empty.style.display = 'none';
+                countEl.textContent = `${jobs.length} ofertas`;
                 jobs.forEach(j => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td title="${(j.title||'').replace(/"/g,'&quot;')}">${j.title||'-'}</td>
-                        <td>${j.company||'-'}</td>
-                        <td>${j.location||'-'}</td>
-                        <td>${j.source||'-'}</td>
-                        <td>${j.salary||'-'}</td>
-                        <td>${j.job_type||'-'}</td>
-                        <td>${j.is_urgent ? 'Si' : 'No'}</td>
-                        <td>${j.is_featured ? 'Si' : 'No'}</td>
-                        <td>${j.scraped_at||'-'}</td>
+                    const card = document.createElement('div');
+                    card.className = 'job-card';
+                    const badges = [];
+                    if (j.is_urgent) badges.push('<span class="badge urgent">Urgente</span>');
+                    if (j.is_featured) badges.push('<span class="badge featured">Destacado</span>');
+                    if (j.job_type) badges.push(`<span class="badge type">${j.job_type}</span>`);
+                    if (j.salary) badges.push(`<span class="badge salary">$${j.salary}</span>`);
+                    const badgesHtml = badges.length ? `<div class="job-badges">${badges.join('')}</div>` : '';
+                    const date = j.scraped_at ? new Date(j.scraped_at).toLocaleDateString('es-CO') : '-';
+                    const urlHtml = j.url ? `<div class="job-url"><a href="${j.url}" target="_blank" rel="noopener">Ver oferta &#8599;</a></div>` : '';
+                    card.innerHTML = `
+                        <div class="job-header">
+                            <div>
+                                <div class="job-title">${j.title||'-'}</div>
+                                <div class="job-company">${j.company||'-'}</div>
+                                ${badgesHtml}
+                            </div>
+                            ${urlHtml}
+                        </div>
+                        <div class="job-details">
+                            <div class="detail-item">
+                                <span class="detail-label">Ubicación</span>
+                                <span class="detail-value">${j.location||'-'}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Fuente</span>
+                                <span class="detail-value">${j.source||'-'}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Tipo</span>
+                                <span class="detail-value">${j.job_type||'-'}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Salario</span>
+                                <span class="detail-value">${j.salary||'-'}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Fecha de extracción</span>
+                                <span class="detail-value">${date}</span>
+                            </div>
+                        </div>
                     `;
-                    tbody.appendChild(tr);
+                    container.appendChild(card);
                 });
             } catch (e) {
                 empty.textContent = 'Error al cargar resultados.';
@@ -348,14 +449,44 @@ class WebHandler(BaseHTTPRequestHandler):
             self._respond(200, RESULTS_HTML, "text/html; charset=utf-8")
 
         elif parsed.path == "/api/results":
+            params = parse_qs(parsed.query)
+            filename = params.get("file", [None])[0]
+            data_dir = Path("data")
+            if filename:
+                filepath = data_dir / filename
+                if filepath.exists() and filepath.suffix == ".json":
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        jobs = json.load(f)
+                else:
+                    jobs = []
+            else:
+                json_files = sorted(data_dir.glob("jobs_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+                if json_files:
+                    with open(json_files[0], "r", encoding="utf-8") as f:
+                        jobs = json.load(f)
+                else:
+                    jobs = []
+            self._respond(200, json.dumps(jobs, ensure_ascii=False), "application/json")
+
+        elif parsed.path == "/api/files":
             data_dir = Path("data")
             json_files = sorted(data_dir.glob("jobs_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-            if json_files:
-                with open(json_files[0], "r", encoding="utf-8") as f:
-                    jobs = json.load(f)
-            else:
-                jobs = []
-            self._respond(200, json.dumps(jobs, ensure_ascii=False), "application/json")
+            files_info = []
+            for fp in json_files:
+                try:
+                    with open(fp, "r", encoding="utf-8") as f:
+                        jobs = json.load(f)
+                    count = len(jobs)
+                except Exception:
+                    count = 0
+                stat = fp.stat()
+                files_info.append({
+                    "name": fp.name,
+                    "size": stat.st_size,
+                    "modified": stat.st_mtime,
+                    "count": count,
+                })
+            self._respond(200, json.dumps(files_info, ensure_ascii=False), "application/json")
 
         else:
             self._respond(404, "Not found", "text/plain")
