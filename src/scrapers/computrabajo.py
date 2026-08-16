@@ -141,3 +141,22 @@ class ComputrabajoScraper(JobSource):
             is_urgent=is_urgent,
             is_featured=is_featured,
         )
+
+    def fetch_description(self, url: str) -> str | None:
+        """Obtiene la descripcion de una oferta individual."""
+        html = self._fetch_page(url)
+        if html is None:
+            return None
+
+        soup = BeautifulSoup(html, "lxml")
+        desc_div = soup.select_one("div#section_description")
+        if not desc_div:
+            desc_div = soup.select_one("div.fs16.fc_base.mt20")
+        if not desc_div:
+            return None
+
+        for tag in desc_div.select("script, style, noscript"):
+            tag.decompose()
+
+        text = desc_div.get_text(separator="\n", strip=True)
+        return text if text else None

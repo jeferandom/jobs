@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.scrapers.computrabajo import ComputrabajoScraper
 from src.scrapers.base import JobSource
 from src.models.job import Job
+from src.analysis.wordcloud_gen import generate_wordcloud
 
 logging.basicConfig(
     level=logging.INFO,
@@ -306,6 +307,10 @@ RESULTS_HTML = """<!DOCTYPE html>
         .back-btn:hover { background: #3a56d4; }
         .count { color: #666; font-size: 0.9rem; }
         .file-label { color: #888; font-size: 0.85rem; font-weight: 400; }
+        .header-actions { margin-left: auto; display: flex; gap: 0.5rem; }
+        .wordcloud-btn { padding: 0.5rem 1rem; background: #9b59b6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; text-decoration: none; }
+        .wordcloud-btn:hover { background: #8e44ad; }
+        .wordcloud-btn:disabled { background: #aaa; cursor: not-allowed; }
         .jobs-container { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
         .job-card { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); padding: 1.25rem 1.5rem; transition: box-shadow 0.15s, transform 0.15s; }
         .job-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); transform: translateY(-1px); }
@@ -325,6 +330,13 @@ RESULTS_HTML = """<!DOCTYPE html>
         .job-location { display: flex; align-items: center; gap: 0.4rem; color: #555; margin-top: 0.25rem; font-size: 0.85rem; }
         .job-url a { color: #4361ee; text-decoration: none; font-size: 0.85rem; }
         .job-url a:hover { text-decoration: underline; }
+        .job-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+        .desc-btn { padding: 0.4rem 0.8rem; background: #17a2b8; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem; }
+        .desc-btn:hover { background: #138496; }
+        .desc-btn:disabled { background: #aaa; cursor: not-allowed; }
+        .desc-btn.loading { background: #6c757d; }
+        .job-description { margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; font-size: 0.85rem; line-height: 1.5; color: #333; display: none; white-space: pre-wrap; }
+        .job-description.visible { display: block; }
         .empty { text-align: center; padding: 3rem; color: #888; font-size: 1rem; }
         @media (max-width: 600px) {
             .job-details { grid-template-columns: 1fr; }
@@ -337,19 +349,82 @@ RESULTS_HTML = """<!DOCTYPE html>
         <h1>Resultados</h1>
         <span class="count" id="count"></span>
         <span class="file-label" id="fileLabel"></span>
+        <div class="header-actions">
+            <button class="wordcloud-btn" id="wordcloudBtn" onclick="showWordcloud()" disabled>&#9729; Nube de Palabras</button>
+        </div>
     </div>
     <div class="jobs-container" id="jobsContainer">
         <div class="empty" id="empty">No hay resultados para mostrar.</div>
     </div>
 
     <script>
+        let currentFile = null;
+
+        async function showWordcloud() {
+            const btn = document.getElementById('wordcloudBtn');
+            btn.disabled = true;
+            btn.textContent = 'Generando...';
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const file = params.get('file');
+                const url = file ? `/api/wordcloud?file=${encodeURIComponent(file)}` : '/api/wordcloud';
+                const resp = await fetch(url);
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    alert(err.error || 'Error al generar nube');
+                    return;
+                }
+                const blob = await resp.blob();
+                const imgUrl = URL.createObjectURL(blob);
+                const win = window.open('', '_blank');
+                win.document.write(`<html><head><title>Nube de Palabras</title><style>body{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#f0f2f5;}img{max-width:100%;height:auto;box-shadow:0 2px 8px rgba(0,0,0,0.1);border-radius:8px;}</style></head><body><img src="${imgUrl}"></body></html>`);
+            } catch (e) {
+                alert('Error: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '&#9729; Nube de Palabras';
+            }
+        }
+
+        async function fetchDescription(index, btn) {
+            btn.disabled = true;
+            btn.classList.add('loading');
+            btn.textContent = 'Cargando...';
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const file = params.get('file');
+                const url = file
+                    ? `/api/job/${index}/description?file=${encodeURIComponent(file)}`
+                    : `/api/job/${index}/description`;
+                const resp = await fetch(url);
+                const data = await resp.json();
+                const descEl = btn.closest('.job-card').querySelector('.job-description');
+                if (data.description) {
+                    descEl.textContent = data.description;
+                    descEl.classList.add('visible');
+                    btn.textContent = 'Descripcion cargada';
+                    btn.style.background = '#28a745';
+                } else {
+                    descEl.textContent = 'No se pudo obtener la descripcion.';
+                    descEl.classList.add('visible');
+                    btn.textContent = 'Sin descripcion';
+                    btn.style.background = '#dc3545';
+                }
+            } catch (e) {
+                btn.textContent = 'Error';
+                btn.style.background = '#dc3545';
+            }
+        }
+
         (async () => {
             const container = document.getElementById('jobsContainer');
             const empty = document.getElementById('empty');
             const countEl = document.getElementById('count');
             const fileLabel = document.getElementById('fileLabel');
+            const wordcloudBtn = document.getElementById('wordcloudBtn');
             const params = new URLSearchParams(window.location.search);
             const file = params.get('file');
+            currentFile = file;
             const apiUrl = file ? `/api/results?file=${encodeURIComponent(file)}` : '/api/results';
             if (file) {
                 const keyword = file.replace(/^jobs_/, '').replace(/\\.json$/, '').replace(/_/g, ' ');
@@ -361,7 +436,8 @@ RESULTS_HTML = """<!DOCTYPE html>
                 if (!jobs.length) { empty.style.display = 'block'; return; }
                 empty.style.display = 'none';
                 countEl.textContent = `${jobs.length} ofertas`;
-                jobs.forEach(j => {
+                wordcloudBtn.disabled = false;
+                jobs.forEach((j, idx) => {
                     const card = document.createElement('div');
                     card.className = 'job-card';
                     const badges = [];
@@ -372,6 +448,9 @@ RESULTS_HTML = """<!DOCTYPE html>
                     const badgesHtml = badges.length ? `<div class="job-badges">${badges.join('')}</div>` : '';
                     const date = j.scraped_at ? new Date(j.scraped_at).toLocaleDateString('es-CO') : '-';
                     const urlHtml = j.url ? `<div class="job-url"><a href="${j.url}" target="_blank" rel="noopener">Ver oferta &#8599;</a></div>` : '';
+                    const descBtnHtml = j.url ? `<button class="desc-btn" onclick="fetchDescription(${idx}, this)">Ver descripcion</button>` : '';
+                    const hasDesc = j.description ? 'visible' : '';
+                    const descText = j.description || '';
                     card.innerHTML = `
                         <div class="job-header">
                             <div>
@@ -383,7 +462,7 @@ RESULTS_HTML = """<!DOCTYPE html>
                         </div>
                         <div class="job-details">
                             <div class="detail-item">
-                                <span class="detail-label">Ubicación</span>
+                                <span class="detail-label">Ubicacion</span>
                                 <span class="detail-value">${j.location||'-'}</span>
                             </div>
                             <div class="detail-item">
@@ -399,10 +478,12 @@ RESULTS_HTML = """<!DOCTYPE html>
                                 <span class="detail-value">${j.salary||'-'}</span>
                             </div>
                             <div class="detail-item">
-                                <span class="detail-label">Fecha de extracción</span>
+                                <span class="detail-label">Fecha de extraccion</span>
                                 <span class="detail-value">${date}</span>
                             </div>
                         </div>
+                        <div class="job-actions">${descBtnHtml}</div>
+                        <div class="job-description ${hasDesc}">${descText}</div>
                     `;
                     container.appendChild(card);
                 });
@@ -422,6 +503,7 @@ class WebHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        path_parts = [p for p in parsed.path.split("/") if p]
 
         if parsed.path == "/":
             sources_options = "".join(
@@ -498,8 +580,100 @@ class WebHandler(BaseHTTPRequestHandler):
                 })
             self._respond(200, json.dumps(files_info, ensure_ascii=False), "application/json")
 
+        elif len(path_parts) == 4 and path_parts[0] == "api" and path_parts[1] == "job" and path_parts[3] == "description":
+            self._handle_job_description(path_parts[2], parsed.query)
+
+        elif parsed.path == "/api/wordcloud":
+            self._handle_wordcloud(parsed.query)
+
         else:
             self._respond(404, "Not found", "text/plain")
+
+    def _handle_job_description(self, index_str: str, query_string: str) -> None:
+        """Obtiene y guarda la descripcion de una oferta."""
+        try:
+            index = int(index_str)
+        except ValueError:
+            self._respond(400, json.dumps({"error": "Indice invalido"}), "application/json")
+            return
+
+        params = parse_qs(query_string)
+        filename = params.get("file", [None])[0]
+        data_dir = Path("data")
+
+        if filename:
+            filepath = data_dir / filename
+        else:
+            json_files = sorted(data_dir.glob("jobs_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+            filepath = json_files[0] if json_files else None
+
+        if not filepath or not filepath.exists():
+            self._respond(404, json.dumps({"error": "Archivo no encontrado"}), "application/json")
+            return
+
+        with open(filepath, "r", encoding="utf-8") as f:
+            jobs = json.load(f)
+
+        if index < 0 or index >= len(jobs):
+            self._respond(400, json.dumps({"error": "Indice fuera de rango"}), "application/json")
+            return
+
+        job = jobs[index]
+
+        if job.get("description"):
+            self._respond(200, json.dumps({"description": job["description"]}, ensure_ascii=False), "application/json")
+            return
+
+        url = job.get("url")
+        if not url:
+            self._respond(200, json.dumps({"description": None}, ensure_ascii=False), "application/json")
+            return
+
+        scraper = ComputrabajoScraper()
+        description = scraper.fetch_description(url)
+
+        if description:
+            jobs[index]["description"] = description
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(jobs, f, ensure_ascii=False, indent=2)
+            logger.info(f"Descripcion guardada para oferta {index} en {filepath.name}")
+
+        self._respond(200, json.dumps({"description": description}, ensure_ascii=False), "application/json")
+
+    def _handle_wordcloud(self, query_string: str) -> None:
+        """Genera y retorna la imagen de la nube de palabras."""
+        params = parse_qs(query_string)
+        filename = params.get("file", [None])[0]
+        data_dir = Path("data")
+
+        if filename:
+            filepath = data_dir / filename
+        else:
+            json_files = sorted(data_dir.glob("jobs_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+            filepath = json_files[0] if json_files else None
+
+        if not filepath or not filepath.exists():
+            self._respond(404, json.dumps({"error": "Archivo no encontrado"}), "application/json")
+            return
+
+        with open(filepath, "r", encoding="utf-8") as f:
+            jobs = json.load(f)
+
+        output_path = str(data_dir / f"wordcloud_{filepath.stem}.png")
+        result = generate_wordcloud(jobs, output_path=output_path)
+
+        if not result:
+            self._respond(404, json.dumps({"error": "No hay datos suficientes para generar la nube"}), "application/json")
+            return
+
+        with open(result, "rb") as f:
+            image_data = f.read()
+
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(image_data)))
+        self.end_headers()
+        self.wfile.write(image_data)
 
     def _respond(self, code: int, body: str, content_type: str) -> None:
         self.send_response(code)
