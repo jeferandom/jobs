@@ -38,13 +38,16 @@ Desarrollador Full Stack con 6 años de experiencia, enfocado en definición de 
 **Organizame** — Remoto · Viña del Mar, Chile (Contratista)  
 [organizame.cl](https://www.organizame.cl)  
 
-**Stack:** Angular, React Native, Node.js/Express  
+**Stack:** React Native, Node.js, Angular
 
-- Definí el stack y la arquitectura de componentes para plataforma SaaS B2B de gestión financiera: facturación electrónica, flujo de caja, recaudo de pagos e inventario, integrada con entidades oficiales.
-- Establecí estándares de código en Angular (componentes, servicios, comunicación HTTP) y estructura de repositorios para el equipo de desarrollo.
-- Revisé pull requests, resolví errores críticos en aplicaciones productivas y mentorizé a desarrolladores junior en arquitectura de componentes y patrones de diseño.
-- Tomé decisiones técnicas sobre integración con APIs REST, automatización con Puppeteer y despliegues con PM2/Nginx/SSH.
-- Lideré la transición del equipo de cascada a Scrum, implementando prácticas de desarrollo iterativo como Scrum Master.
+- Lideré la implementación de Scrum en el equipo, coordinando ceremonias (daily, planning, retrospective), definiendo criterios de aceptación para historias de usuario y gestionando el flujo de trabajo del equipo de desarrollo.
+- Facilité la transición del equipo de cascada a flujo iterativo, priorizando backlog en función de impacto técnico y necesidades del negocio, y eliminando bloqueos que retrasaban la entrega.
+- Desarrollo de plataforma SaaS B2B para gestión financiera: flujo de caja, recaudo de pagos, inventario y facturación electrónica integrada con entidades oficiales.
+- Frontend con Angular y React Native; integración con APIs REST en Node.js/Express y participación en lógica backend según requerimientos.
+- Implementación de funcionalidades en Angular siguiendo arquitectura de componentes, servicios y comunicación HTTP.
+- Corrección de errores y mantenimiento evolutivo de aplicaciones productivas, despliegues con PM2/Nginx/SSH y control de versiones con Git.
+- Desarrollo de scrapers para automatización de procesos con Puppeteer.
+
 
 ---
 
@@ -53,9 +56,9 @@ Desarrollador Full Stack con 6 años de experiencia, enfocado en definición de 
 [sinapsis.media](https://sinapsis.media/)  
 
 **Stack:** React (Gatsby, TypeScript), WordPress Headless, GraphQL, Docker  
-
-- Definí la arquitectura técnica de [Miami Book Fair Online](https://www.miamibookfaironline.com/): Gatsby + TypeScript en frontend, WordPress Headless + GraphQL en backoffice, priorizando rendimiento y mantenibilidad.
-- Establecí estándares de control de versiones con Git y configuración de entornos con Docker Compose, definiendo la estructura de despliegue en DigitalOcean.
+- Desarrollo de [Miami Book Fair Online](https://www.miamibookfaironline.com/), plataforma de streaming y contenido cultural: Gatsby y TypeScript en frontend, WordPress Headless y GraphQL en backoffice y backend, optimizando rendimiento y mantenibilidad.
+- Configuración de entornos de desarrollo con Docker Compose y despliegues en DigitalOcean, usando Git para control de versiones.
+- Integración de pagos en línea y mejoras funcionales en sitios WordPress adicionales.
 
 ---
 
@@ -63,24 +66,24 @@ Desarrollador Full Stack con 6 años de experiencia, enfocado en definición de 
 **Pixju** — Híbrido · Cali, Colombia (Freelance)  
 [pixju.com](https://pixju.com/)  
 
-**Stack:** React, React Native, Node.js/Express, WordPress, AWS, Laravel (PHP)  
+**Stack:** React, React Native, Node.js / Express, WordPress, AWS, Laravel(php)  
 
-- Diseñé la arquitectura end-to-end de plataforma de food delivery: frontend React, backend Node.js/Express, integración con pasarelas de pago y notificaciones push.
-- Definí la infraestructura en AWS EC2, seleccionando servicios de terceros según requisitos de escalabilidad y costo.
-- Desarrollé funcionalidades backend con Laravel (PHP), implementando APIs REST y patrones de diseño MVC.
+- Desarrollador end-to-end de una plataforma de food delivery, incluyendo.
+- Despliegues en AWS EC2, gestión de infraestructura y operación continua.
+- Integración de pasarelas de pago y notificaciones push.
+- Desarrollo de sitios y e-commerce en WordPress / WooCommerce.
 
 ---
 
-### **Mobile Developer** | Marzo 2019 – Junio 2019  
+### **Mobile Developer | Marzo 2019 - Junio 2019**
 **Softus** — Presencial · Cali, Colombia (Freelance)  
-[softusco.com](https://softusco.com/)  
+[softusco.com](https://softusco.com/)
 
-**Stack:** React Native  
+**Stack:** React Native
 
 - Desarrollo de aplicación móvil cross-platform (Android e iOS) con React Native [**Ver**](https://play.google.com/store/apps/details?id=com.softus.ulala_c&pcampaignid=web_share.).
 
 ---
-
 ## **Inteligencia Artificial**
 
 **Agentes de IA:**
@@ -90,38 +93,39 @@ Uso de agentes autónomos para orquestación de tareas complejas: análisis de c
 Implementación de sistemas RAG para contextualizar respuestas de LLMs con bases de conocimiento propias: diseño de estrategias de chunking, embeddings y recuperación semántica de documentos.
 
 **MCP (Model Context Protocol):**
-Integración de herramientas externas vía MCP para extender capacidades de LLMs con acceso seguro a bases de datos, APIs, filesystem y otros recursos.
+Integración de herramientas externas vía MCP para extender capacidades de LLMs con acceso seguro a bases de datos, APIs, filesystem y otros recursos, siguiendo el estándar de protocolo de contexto de modelo.
 
 **AI Spec Driven Development:**
-Definición de especificaciones técnicas detalladas como punto de partida para que la IA genere código alineado con la arquitectura, convenciones y requisitos del proyecto.
+Definición de especificaciones técnicas detalladas como punto de partida para que la IA genere código alineado con la arquitectura, convenciones y requisitos del proyecto, garantizando control sobre calidad y consistencia desde la fase de diseño.
+
+**Desarrollo metodológico guiado por IA:**
+Planeación de arquitectura y diseño de features con IA como herramienta de análisis, iteración de código generado con testing simultáneo, gestión eficiente de contexto y tokens para proyectos complejos de múltiples sesiones, manteniendo control sobre calidad y consistencia del código producido.
 
 ---
 
 ## **Tecnologías y herramientas**
 
-**Backend:**
-PHP (Laravel) · Node.js · NestJS · Express · APIs REST · Swagger · MongoDB · MySQL · GraphQL
-
 **Frontend:**
-JavaScript · TypeScript · React · Next.js · Angular · React Native · HTML5 · CSS3 · TailwindCSS
+React · Next.js · Angular · TypeScript · JavaScript · HTML5 · CSS3 · TailwindCSS · Material UI · Styled Components · React Native 
 
-**Arquitectura:**
-Patrones de diseño · Arquitectura de software · Control de versiones Git · Integración de APIs de terceros · Docker · Nginx · PM2 · Linux
+**Backend:**
+Node.js · NestJS · Express · APIs REST · Swagger · Laravel(php)· MongoDB · MySQL
 
-**Testing:**
-Jest · Vitest · React Testing Library · Pruebas unitarias
+**Testing y calidad:**
+Jest · React Testing Library · Pruebas unitarias
 
-**Metodologías:**
-Scrum · Revisión de código · Mentoría técnica
+**Otros:**
+Linux · Docker · Nginx · PM2 · Git · GraphQL · Redux · Postman · Scrum
 
 ---
+
 
 ## **Educación**
 
 **SENA** 
 · Cali, Colombia
 
-Tecnólogo en Análisis y Desarrollo de Sistemas De Información.
+Tecnólogo en Análisis y Desarrollo de Sistemas De Información. [≈ Software Development Associate Degree.]
 
 2014 - 2016
 
