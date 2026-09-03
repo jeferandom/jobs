@@ -12,15 +12,19 @@ import json
 import logging
 import sys
 import webbrowser
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.scrapers.computrabajo import ComputrabajoScraper
-from src.scrapers.base import JobSource
+from src.scrapers.computrabajo_auth import ComputrabajoAuthScraper
+from src.scrapers.base import JobSource, SessionExpiredError
 from src.models.job import Job
+from src.auth import SessionManager, ComputrabajoOAuthProvider
+from src.auth.credentials import ComputrabajoCredentialsProvider
+from src.auth.base import AuthProvider, LoginStatus
 from src.analysis.wordcloud_gen import generate_wordcloud
 
 logging.basicConfig(
@@ -29,16 +33,36 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# =====================
+# Auth providers
+# =====================
+
+_session_mgr = SessionManager()
+_oauth_provider = ComputrabajoOAuthProvider()
+_credentials_provider = ComputrabajoCredentialsProvider()
+_auth_providers: dict[str, AuthProvider] = {
+    "computrabajo": _oauth_provider,
+}
+
+# =====================
+# Scrapers
+# =====================
+
 
 def get_scrapers() -> list[JobSource]:
     """Retorna la lista de adaptadores disponibles."""
     return [
         ComputrabajoScraper(),
+        ComputrabajoAuthScraper(),
     ]
 
 
 def run_scraper(keyword: str, source_name: str | None = None, limit: int = 100) -> list[Job]:
-    """Ejecuta el scraper para la palabra clave y fuente indicadas."""
+    """Ejecuta el scraper para la palabra clave y fuente indicadas.
+
+    Solo incluye fuentes públicas (no requieren auth), salvo que se
+    pida explícitamente una fuente autenticada.
+    """
     scrapers = get_scrapers()
 
     if source_name:
@@ -46,6 +70,8 @@ def run_scraper(keyword: str, source_name: str | None = None, limit: int = 100) 
         if not scrapers:
             logger.error(f"Fuente no encontrada: {source_name}")
             return []
+    else:
+        scrapers = [s for s in scrapers if not s.requires_auth]
 
     all_jobs: list[Job] = []
     for scraper in scrapers:
@@ -169,6 +195,34 @@ HTML_PAGE = """<!DOCTYPE html>
         .file-item .view-btn { flex-shrink: 0; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; padding: 0; background: #4361ee; color: white; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; }
         .file-item .view-btn:hover { background: #3a56d4; }
         .empty-msg { text-align: center; color: #888; padding: 2rem 0; font-size: 0.9rem; }
+        .auth-section { margin-bottom: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; border: 1px solid #e3e3e3; }
+        .auth-section h3 { font-size: 0.9rem; margin-bottom: 0.75rem; color: #333; }
+        .auth-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; }
+        .auth-name { flex: 1; font-size: 0.85rem; font-weight: 600; }
+        .auth-status { font-size: 0.75rem; color: #888; }
+        .auth-status.success { color: #28a745; }
+        .auth-status.in-progress { color: #4361ee; }
+        .auth-status.error { color: #dc3545; }
+        .auth-btn { padding: 0.35rem 0.75rem; background: #4361ee; color: white; border: none; border-radius: 6px; font-size: 0.75rem; cursor: pointer; width: auto; }
+        .auth-btn:hover:not(:disabled) { background: #3a56d4; }
+        .auth-btn:disabled { background: #aaa; cursor: wait; }
+        .auth-btn.connected { background: #28a745; }
+        .auth-btn.applied-btn { background: #9b59b6; }
+        .auth-btn.applied-btn:hover { background: #8e44ad; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal-content { background: white; padding: 2rem; border-radius: 12px; width: 90%; max-width: 400px; position: relative; }
+        .modal-close { position: absolute; top: 1rem; right: 1rem; font-size: 1.5rem; cursor: pointer; color: #666; }
+        .modal-close:hover { color: #333; }
+        .modal-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
+        .tab-btn { flex: 1; padding: 0.5rem; background: none; border: none; cursor: pointer; font-size: 0.9rem; color: #666; border-radius: 6px 6px 0 0; }
+        .tab-btn.active { color: #4361ee; border-bottom: 2px solid #4361ee; font-weight: 600; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .field { margin-bottom: 1rem; }
+        .field label { display: block; margin-bottom: 0.25rem; font-weight: 600; font-size: 0.85rem; color: #333; }
+        .field input { width: 100%; padding: 0.6rem; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; }
+        .error-msg { color: #dc3545; font-size: 0.85rem; margin-bottom: 1rem; padding: 0.5rem; background: #f8d7da; border-radius: 6px; }
+        .modal-hint { color: #666; font-size: 0.85rem; margin-bottom: 1rem; text-align: center; }
         @media (max-width: 800px) {
             .layout { flex-direction: column; }
             .card { flex: none; width: 100%; }
@@ -180,6 +234,53 @@ HTML_PAGE = """<!DOCTYPE html>
     <div class="layout">
         <div class="card">
             <h1>Jobs Scraper</h1>
+
+            <div class="auth-section">
+                <h3>Fuentes con login</h3>
+                <div class="auth-row">
+                    <span class="auth-name">Computrabajo</span>
+                    <span class="auth-status" id="auth-status-computrabajo">Verificando...</span>
+                    <button class="auth-btn" id="auth-btn-computrabajo"
+                            onclick="showLoginModal()">Iniciar sesión</button>
+                </div>
+                <div class="auth-row">
+                    <span class="auth-name">InfoJobs</span>
+                    <span class="auth-status success">Público</span>
+                </div>
+                <button class="auth-btn applied-btn" id="btn-applied"
+                        onclick="fetchApplied()" disabled>Mis postulaciones</button>
+            </div>
+
+            <!-- Modal de login -->
+            <div id="loginModal" class="modal" style="display:none;">
+                <div class="modal-content">
+                    <span class="modal-close" onclick="closeLoginModal()">&times;</span>
+                    <h3>Iniciar sesión en CompuTrabajo</h3>
+                    <div class="modal-tabs">
+                        <button class="tab-btn active" onclick="showTab('credentials')">Email y contraseña</button>
+                        <button class="tab-btn" onclick="showTab('google')">Google</button>
+                    </div>
+                    <div id="tab-credentials" class="tab-content active">
+                        <form id="loginForm" onsubmit="return credentialsLogin(event)">
+                            <div class="field">
+                                <label for="login-email">Email</label>
+                                <input type="email" id="login-email" required placeholder="tu@email.com">
+                            </div>
+                            <div class="field">
+                                <label for="login-password">Contraseña</label>
+                                <input type="password" id="login-password" required placeholder="••••••••">
+                            </div>
+                            <div id="login-error" class="error-msg" style="display:none;"></div>
+                            <button type="submit" class="auth-btn" id="btn-credentials-login">Iniciar sesión</button>
+                        </form>
+                    </div>
+                    <div id="tab-google" class="tab-content">
+                        <p class="modal-hint">Se abrirá una ventana del navegador para autenticarte con Google.</p>
+                        <button class="auth-btn" onclick="startGoogleLogin()">Continuar con Google</button>
+                    </div>
+                </div>
+            </div>
+
             <form id="form">
                 <label for="keyword">Palabra clave</label>
                 <input type="text" id="keyword" placeholder="desarrollador" value="desarrollador" required>
@@ -213,6 +314,190 @@ HTML_PAGE = """<!DOCTYPE html>
     </div>
 
     <script>
+        // =====================
+        // Auth
+        // =====================
+
+        async function checkAuthStatus() {
+            try {
+                const resp = await fetch('/api/auth/status');
+                const statuses = await resp.json();
+                for (const [provider, state] of Object.entries(statuses)) {
+                    updateAuthUI(provider, state);
+                }
+            } catch (e) {
+                console.error('Error verificando auth:', e);
+            }
+        }
+
+        function updateAuthUI(provider, state) {
+            const btn = document.getElementById(`auth-btn-${provider}`);
+            const status = document.getElementById(`auth-status-${provider}`);
+            const appliedBtn = document.getElementById('btn-applied');
+            if (!btn || !status) return;
+
+            btn.disabled = false;
+            status.className = 'auth-status';
+
+            switch (state) {
+                case 'connected':
+                    btn.textContent = 'Cerrar sesión';
+                    btn.classList.add('connected');
+                    btn.onclick = () => logoutAuth(provider);
+                    status.textContent = 'Conectado';
+                    status.classList.add('success');
+                    if (appliedBtn) appliedBtn.disabled = false;
+                    break;
+                case 'in_progress':
+                    btn.textContent = 'Cancelar';
+                    btn.onclick = () => cancelAuth(provider);
+                    status.textContent = 'Login en curso...';
+                    status.classList.add('in-progress');
+                    break;
+                case 'cancelled':
+                case 'timeout':
+                    btn.textContent = 'Iniciar sesión';
+                    btn.onclick = () => showLoginModal();
+                    status.textContent = state === 'timeout' ? 'Tiempo agotado' : 'Cancelado';
+                    status.classList.add('error');
+                    if (appliedBtn) appliedBtn.disabled = true;
+                    break;
+                case 'error':
+                    btn.textContent = 'Iniciar sesión';
+                    btn.onclick = () => showLoginModal();
+                    status.textContent = 'Error';
+                    status.classList.add('error');
+                    if (appliedBtn) appliedBtn.disabled = true;
+                    break;
+                default:
+                    btn.textContent = 'Iniciar sesión';
+                    btn.onclick = () => showLoginModal();
+                    status.textContent = 'No conectado';
+                    if (appliedBtn) appliedBtn.disabled = true;
+            }
+        }
+
+        async function startAuth(provider) {
+            updateAuthUI(provider, 'in_progress');
+            await fetch(`/api/auth/start/${provider}`, { method: 'POST' });
+            pollAuthStatus(provider);
+        }
+
+        async function cancelAuth(provider) {
+            await fetch(`/api/auth/cancel/${provider}`, { method: 'POST' });
+            updateAuthUI(provider, 'cancelled');
+        }
+
+        async function logoutAuth(provider) {
+            await fetch(`/api/auth/logout/${provider}`, { method: 'POST' });
+            updateAuthUI(provider, 'disconnected');
+        }
+
+        function pollAuthStatus(provider) {
+            const interval = setInterval(async () => {
+                const resp = await fetch(`/api/auth/check/${provider}`);
+                const data = await resp.json();
+                updateAuthUI(provider, data.status);
+                if (data.status !== 'in_progress') {
+                    clearInterval(interval);
+                    closeLoginModal();
+                    if (data.error) {
+                        document.getElementById('login-error').textContent = data.error;
+                        document.getElementById('login-error').style.display = 'block';
+                    }
+                }
+            }, 2000);
+        }
+
+        // =====================
+        // Login Modal
+        // =====================
+
+        function showLoginModal() {
+            document.getElementById('loginModal').style.display = 'flex';
+            showTab('credentials');
+        }
+
+        function closeLoginModal() {
+            document.getElementById('loginModal').style.display = 'none';
+            document.getElementById('login-error').style.display = 'none';
+        }
+
+        function showTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        async function credentialsLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            const errorDiv = document.getElementById('login-error');
+            const btn = document.getElementById('btn-credentials-login');
+
+            errorDiv.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = 'Ingresando...';
+
+            try {
+                const resp = await fetch('/api/auth/login/computrabajo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await resp.json();
+
+                if (resp.ok) {
+                    updateAuthUI('computrabajo', 'in_progress');
+                    pollAuthStatus('computrabajo');
+                } else {
+                    errorDiv.textContent = data.error || 'Error al iniciar sesión';
+                    errorDiv.style.display = 'block';
+                    btn.disabled = false;
+                    btn.textContent = 'Iniciar sesión';
+                }
+            } catch (err) {
+                errorDiv.textContent = 'Error de conexión: ' + err.message;
+                errorDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Iniciar sesión';
+            }
+            return false;
+        }
+
+        async function startGoogleLogin() {
+            closeLoginModal();
+            startAuth('computrabajo');
+        }
+
+        async function fetchApplied() {
+            const result = document.getElementById('result');
+            result.className = '';
+            result.textContent = 'Cargando postulaciones...';
+            result.style.display = 'block';
+            try {
+                const resp = await fetch('/api/applied/computrabajo');
+                const data = await resp.json();
+                if (!resp.ok) {
+                    result.className = 'error';
+                    result.textContent = data.error || 'Error al cargar postulaciones';
+                    return;
+                }
+                result.className = 'success';
+                result.textContent = `${data.count} postulaciones guardadas en ${data.file}`;
+                loadFiles();
+            } catch (e) {
+                result.className = 'error';
+                result.textContent = 'Error: ' + e.message;
+            }
+        }
+
+        // =====================
+        // Files / Search
+        // =====================
+
         async function loadFiles() {
             const list = document.getElementById('fileList');
             const emptyMsg = document.getElementById('emptyMsg');
@@ -251,6 +536,7 @@ HTML_PAGE = """<!DOCTYPE html>
             }
         }
 
+        checkAuthStatus();
         loadFiles();
 
         document.getElementById('form').addEventListener('submit', async (e) => {
@@ -513,6 +799,18 @@ class WebHandler(BaseHTTPRequestHandler):
             page = HTML_PAGE.replace("__SOURCES__", sources_options)
             self._respond(200, page, "text/html; charset=utf-8")
 
+        elif parsed.path == "/api/auth/status":
+            statuses = {}
+            for name, provider in _auth_providers.items():
+                if _session_mgr.exists(name):
+                    statuses[name] = "connected"
+                else:
+                    statuses[name] = "disconnected"
+            self._respond(200, json.dumps(statuses), "application/json")
+
+        elif len(path_parts) == 4 and path_parts[0] == "api" and path_parts[1] == "auth" and path_parts[2] == "check":
+            self._handle_auth_check(path_parts[3])
+
         elif parsed.path == "/search":
             params = parse_qs(parsed.query)
             keyword = params.get("keyword", ["desarrollador"])[0]
@@ -586,8 +884,171 @@ class WebHandler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/wordcloud":
             self._handle_wordcloud(parsed.query)
 
+        elif len(path_parts) == 3 and path_parts[0] == "api" and path_parts[1] == "applied":
+            self._handle_applied(path_parts[2])
+
         else:
             self._respond(404, "Not found", "text/plain")
+
+    def do_POST(self) -> None:
+        """Rutas POST: inicio, cancelación y cierre de login."""
+        parsed = urlparse(self.path)
+        path_parts = [p for p in parsed.path.split("/") if p]
+
+        if len(path_parts) == 4 and path_parts[0] == "api" and path_parts[1] == "auth":
+            action = path_parts[2]
+            provider_name = path_parts[3]
+
+            if action == "start":
+                self._handle_auth_start(provider_name)
+            elif action == "login":
+                self._handle_auth_login(provider_name)
+            elif action == "cancel":
+                self._handle_auth_cancel(provider_name)
+            elif action == "logout":
+                self._handle_auth_logout(provider_name)
+            else:
+                self._respond(404, "Not found", "text/plain")
+        else:
+            self._respond(404, "Not found", "text/plain")
+
+    def _handle_auth_start(self, provider_name: str) -> None:
+        """Inicia el login de un proveedor en hilo daemon (ventana manual)."""
+        provider = _auth_providers.get(provider_name)
+        if not provider:
+            self._respond(404, json.dumps({"error": "Proveedor no soportado"}), "application/json")
+            return
+
+        started = provider.start_login()
+        if started:
+            self._respond(200, json.dumps({"status": "in_progress"}), "application/json")
+        else:
+            self._respond(409, json.dumps({"error": "Login ya en progreso"}), "application/json")
+
+    def _handle_auth_login(self, provider_name: str) -> None:
+        """Login automático con credenciales email/password."""
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length) if content_length > 0 else b""
+
+        try:
+            data = json.loads(body) if body else {}
+        except json.JSONDecodeError:
+            self._respond(400, json.dumps({"error": "JSON inválido"}), "application/json")
+            return
+
+        email = data.get("email", "").strip()
+        password = data.get("password", "").strip()
+
+        if not email or not password:
+            self._respond(400, json.dumps({"error": "Email y contraseña son requeridos"}), "application/json")
+            return
+
+        if provider_name == "computrabajo":
+            started = _credentials_provider.start_login_with_credentials(email, password)
+        else:
+            self._respond(404, json.dumps({"error": "Proveedor no soportado"}), "application/json")
+            return
+
+        if started:
+            self._respond(200, json.dumps({"status": "in_progress"}), "application/json")
+        else:
+            self._respond(409, json.dumps({"error": "Login ya en progreso"}), "application/json")
+
+    def _handle_auth_cancel(self, provider_name: str) -> None:
+        """Cancela el login en progreso."""
+        provider = _auth_providers.get(provider_name)
+        if not provider:
+            self._respond(404, json.dumps({"error": "Proveedor no soportado"}), "application/json")
+            return
+        provider.cancel()
+        self._respond(200, json.dumps({"status": "cancelled"}), "application/json")
+
+    def _handle_auth_logout(self, provider_name: str) -> None:
+        """Elimina la sesión guardada."""
+        deleted = _session_mgr.delete(provider_name)
+        if deleted:
+            provider = _auth_providers.get(provider_name)
+            if provider:
+                provider._set_status(LoginStatus.IDLE)
+            self._respond(200, json.dumps({"status": "disconnected"}), "application/json")
+        else:
+            self._respond(404, json.dumps({"error": "No hay sesión guardada"}), "application/json")
+
+    def _handle_auth_check(self, provider_name: str) -> None:
+        """Retorna el estado actual del login para un proveedor.
+
+        Revisa tanto el provider OAuth como el de credenciales.
+        """
+        if provider_name == "computrabajo":
+            providers_to_check = [_oauth_provider, _credentials_provider]
+        else:
+            provider = _auth_providers.get(provider_name)
+            providers_to_check = [provider] if provider else []
+
+        if not providers_to_check:
+            self._respond(404, json.dumps({"error": "Proveedor no soportado"}), "application/json")
+            return
+
+        # Si ya hay sesión guardada, reportar connected
+        if _session_mgr.exists(provider_name):
+            self._respond(200, json.dumps({"status": "connected"}), "application/json")
+            return
+
+        # Revisar el estado de los providers
+        for provider in providers_to_check:
+            status = provider.get_status()
+            error = provider.get_error_message()
+
+            if status == LoginStatus.SUCCESS:
+                self._respond(200, json.dumps({"status": "connected"}), "application/json")
+                return
+
+            if status == LoginStatus.IN_PROGRESS:
+                self._respond(200, json.dumps({"status": "in_progress"}), "application/json")
+                return
+
+            if status in (LoginStatus.TIMEOUT, LoginStatus.CANCELLED, LoginStatus.ERROR):
+                body = {"status": status.value}
+                if error:
+                    body["error"] = error
+                self._respond(200, json.dumps(body), "application/json")
+                return
+
+        self._respond(200, json.dumps({"status": "idle"}), "application/json")
+
+    def _handle_applied(self, provider_name: str) -> None:
+        """Scrapea y retorna las postulaciones del usuario."""
+        if not _session_mgr.exists(provider_name):
+            self._respond(
+                401,
+                json.dumps({"error": "login_required", "provider": provider_name}),
+                "application/json",
+            )
+            return
+
+        scraper = next((s for s in get_scrapers() if s.name == provider_name and s.requires_auth), None)
+        if not scraper:
+            self._respond(404, json.dumps({"error": "Proveedor no soportado"}), "application/json")
+            return
+
+        try:
+            jobs = scraper.get_applied_jobs()
+            filename = f"applied_{provider_name}.json"
+            filepath = save_to_json(jobs, filename)
+            self._respond(
+                200,
+                json.dumps({"count": len(jobs), "file": filepath}),
+                "application/json",
+            )
+        except SessionExpiredError as e:
+            self._respond(
+                401,
+                json.dumps({"error": "session_expired", "message": str(e)}),
+                "application/json",
+            )
+        except Exception as e:
+            logger.error(f"Error obteniendo postulaciones: {e}")
+            self._respond(500, json.dumps({"error": str(e)}), "application/json")
 
     def _handle_job_description(self, index_str: str, query_string: str) -> None:
         """Obtiene y guarda la descripcion de una oferta."""
@@ -685,8 +1146,11 @@ class WebHandler(BaseHTTPRequestHandler):
         logger.info(f"HTTP {format % args}")
 
 
-class ReusableHTTPServer(HTTPServer):
+class ReusableHTTPServer(ThreadingHTTPServer):
+    """Servidor HTTP multi-hilo para no bloquear durante logins largos."""
+
     allow_reuse_address = True
+    daemon_threads = True
 
 
 def run_web(port: int = 8000) -> None:

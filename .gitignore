@@ -16,6 +16,8 @@ ENV/
 data/*.csv
 data/*.json
 data/*.xlsx
+data/sessions/
+data/*.png
 
 # Logs
 *.log
