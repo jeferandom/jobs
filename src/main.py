@@ -248,7 +248,7 @@ HTML_PAGE = """<!DOCTYPE html>
                     <span class="auth-status success">Público</span>
                 </div>
                 <button class="auth-btn applied-btn" id="btn-applied"
-                        onclick="fetchApplied()" disabled>Mis postulaciones</button>
+                        onclick="window.location.href='/applied'" disabled>Mis postulaciones</button>
             </div>
 
             <!-- Modal de login -->
@@ -784,6 +784,103 @@ RESULTS_HTML = """<!DOCTYPE html>
 """
 
 
+APPLIED_HTML = """<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mis Postulaciones - Jobs Scraper</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: #f0f2f5; padding: 2rem; }
+        .header { max-width: 1000px; margin: 0 auto 1.5rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+        h1 { font-size: 1.5rem; color: #1a1a2e; }
+        .back-btn { padding: 0.5rem 1rem; background: #4361ee; color: white; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; font-size: 0.9rem; }
+        .back-btn:hover { background: #3a56d4; }
+        .count { color: #666; font-size: 0.9rem; }
+        .jobs-container { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+        .job-card { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); padding: 1.25rem 1.5rem; transition: box-shadow 0.15s, transform 0.15s; }
+        .job-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); transform: translateY(-1px); }
+        .job-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+        .job-title { font-size: 1.1rem; font-weight: 700; color: #1a1a2e; margin-bottom: 0.25rem; }
+        .job-company { font-size: 0.95rem; color: #4361ee; font-weight: 600; }
+        .job-badges { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.5rem; }
+        .badge { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.2rem 0.55rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+        .badge.applied { background: #9b59b6; color: white; }
+        .badge.type { background: #e9ecef; color: #495057; }
+        .job-details { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1.5rem; margin-top: 1rem; font-size: 0.85rem; }
+        .detail-item { display: flex; flex-direction: column; gap: 0.15rem; }
+        .detail-label { color: #888; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.3px; }
+        .detail-value { color: #333; font-weight: 500; }
+        .job-url a { color: #4361ee; text-decoration: none; font-size: 0.85rem; }
+        .job-url a:hover { text-decoration: underline; }
+        .empty { text-align: center; padding: 3rem; color: #888; font-size: 1rem; }
+        @media (max-width: 600px) {
+            .job-details { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="/" class="back-btn">Volver</a>
+        <h1>Mis Postulaciones</h1>
+        <span class="count" id="count"></span>
+    </div>
+    <div class="jobs-container" id="jobsContainer">
+        <div class="empty" id="empty">No hay postulaciones para mostrar.</div>
+    </div>
+
+    <script>
+        (async () => {
+            const container = document.getElementById('jobsContainer');
+            const empty = document.getElementById('empty');
+            const countEl = document.getElementById('count');
+            try {
+                const resp = await fetch('/api/applied/list');
+                const jobs = await resp.json();
+                if (!jobs.length) { empty.style.display = 'block'; return; }
+                empty.style.display = 'none';
+                countEl.textContent = `${jobs.length} postulaciones`;
+                jobs.forEach((j) => {
+                    const card = document.createElement('div');
+                    card.className = 'job-card';
+                    const badges = ['<span class="badge applied">Postulado</span>'];
+                    if (j.job_type) badges.push(`<span class="badge type">${j.job_type}</span>`);
+                    const badgesHtml = `<div class="job-badges">${badges.join('')}</div>`;
+                    const urlHtml = j.url ? `<div class="job-url"><a href="${j.url}" target="_blank" rel="noopener">Ver oferta &#8599;</a></div>` : '';
+                    card.innerHTML = `
+                        <div class="job-header">
+                            <div>
+                                <div class="job-title">${j.title||'-'}</div>
+                                <div class="job-company">${j.company||'-'}</div>
+                                ${badgesHtml}
+                            </div>
+                            ${urlHtml}
+                        </div>
+                        <div class="job-details">
+                            <div class="detail-item">
+                                <span class="detail-label">Ubicacion</span>
+                                <span class="detail-value">${j.location||'-'}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Fuente</span>
+                                <span class="detail-value">${j.source||'-'}</span>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
+            } catch (e) {
+                empty.textContent = 'Error al cargar postulaciones.';
+                empty.style.display = 'block';
+            }
+        })();
+    </script>
+</body>
+</html>
+"""
+
+
 class WebHandler(BaseHTTPRequestHandler):
     """Handler para la UI web."""
 
@@ -883,6 +980,12 @@ class WebHandler(BaseHTTPRequestHandler):
 
         elif parsed.path == "/api/wordcloud":
             self._handle_wordcloud(parsed.query)
+
+        elif parsed.path == "/applied":
+            self._respond(200, APPLIED_HTML, "text/html; charset=utf-8")
+
+        elif parsed.path == "/api/applied/list":
+            self._handle_applied_list()
 
         elif len(path_parts) == 3 and path_parts[0] == "api" and path_parts[1] == "applied":
             self._handle_applied(path_parts[2])
@@ -1048,6 +1151,21 @@ class WebHandler(BaseHTTPRequestHandler):
             )
         except Exception as e:
             logger.error(f"Error obteniendo postulaciones: {e}")
+            self._respond(500, json.dumps({"error": str(e)}), "application/json")
+
+    def _handle_applied_list(self) -> None:
+        """Retorna las postulaciones guardadas en applied_computrabajo.json."""
+        data_dir = Path("data")
+        filepath = data_dir / "applied_computrabajo.json"
+        if not filepath.exists():
+            self._respond(200, json.dumps([], ensure_ascii=False), "application/json")
+            return
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                jobs = json.load(f)
+            self._respond(200, json.dumps(jobs, ensure_ascii=False), "application/json")
+        except Exception as e:
+            logger.error(f"Error leyendo postulaciones: {e}")
             self._respond(500, json.dumps({"error": str(e)}), "application/json")
 
     def _handle_job_description(self, index_str: str, query_string: str) -> None:
